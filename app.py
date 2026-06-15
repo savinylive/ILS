@@ -102,4 +102,14 @@ def falso():
 	global historico_passagens, status_prova, vencedor_detectado, parametro_prova, relogio_inicial_texto
 	id_kart = int(request.args.get('id', 1))
 	tempo_recebido = int(request.args.get('tempo', int(time.time() * 1000)))
-if status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:if id_kart not in historico_passagens: historico_passagens[id_kart] = []historico_passagens[id_kart].append(tempo_recebido)total_voltas = len(historico_passagens[id_kart]) - 1if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"return "ok"if name == 'main':threading.Thread(target=processar_dados_serial, daemon=True).start()threading.Thread(target=atualizar_relogio_loop, daemon=True).start()app.run(host='0.0.0.0', port=5000, debug=False)
+	if status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:
+		if id_kart not in historico_passagens: historico_passagens[id_kart] = []
+		historico_passagens[id_kart].append(tempo_recebido)
+		total_voltas = len(historico_passagens[id_kart]) - 1
+		if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"
+	return "ok"
+
+if __name__ == '__main__':
+	threading.Thread(target=processar_dados_serial, daemon=True).start()
+	threading.Thread(target=atualizar_relogio_loop, daemon=True).start()
+	app.run(host='0.0.0.0', port=5000, debug=False)
