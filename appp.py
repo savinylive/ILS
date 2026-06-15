@@ -68,7 +68,7 @@ def tratar_passagem_logica(id_kart, tempo_recebido):
 			executar_salvamento_automatico()
 	# Regra de fim de corrida por número de voltas
 def obter_ranking(dados_origem=None):
-	global tipo_sessao, parametro_prova, relogio_inicial_texto, status_prova, grid_final_salvo, historico_passagens, TABELA_PILOTOS
+ global tipo_sessao, parametro_prova, relogio_inicial_texto, status_prova, grid_final_salvo, historico_passagens, TABELA_PILOTOS
 	if status_prova == "GRID_DEFINIDO" and dados_origem is None: return grid_final_salvo
 	fonte = historico_passagens if dados_origem is None else dados_origem
 	ranking = []
