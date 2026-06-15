@@ -3,24 +3,22 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify
 app = Flask(__name__)
 PORTA_SERIAL, VELOCIDADE = 'COM3', 115200
-# Banco de dados que fica trancado e nunca se perde entre as sessões
 TABELA_PILOTOS = {1:{"nome":"Piloto 1","numero":"17"}, 2:{"nome":"Piloto 2","numero":"44"}, 3:{"nome":"Piloto 3","numero":"05"}, 4:{"nome":"Piloto 4","numero":"99"}}
 historico_passagens, ranking_atual_salvo, grid_final_salvo = {}, [], []
 status_prova, tipo_sessao, relogio_inicial_texto = "AGUARDANDO", "TREINO", "00:00"
 tempo_limite_prova, tempo_inicio_prova, parametro_prova = 0, 0, 5
 vencedor_detectado = False
-# Variável de controle para a regra de Tempo Esgotado + 1 Volta
 classificacao_zerada, karts_que_ja_fecharam_volta = False, []
 HTML_PAINEL = """<!DOCTYPE html><html><head><title>ILS Timing</title>
 <style>body{background:#0b0c10;color:#fff;font-family:sans-serif;text-align:center;margin:0}header{background:#1f2833;padding:15px;border-bottom:4px solid #ff4500;display:flex;justify-content:space-between;align-items:center;padding:10px 40px}.box{background:#151a21;padding:15px;border-radius:6px;border:1px solid #ff4500;display:flex;gap:12px;align-items:center;justify-content:center}table{width:95%;max-width:1200px;margin:20px auto;border-collapse:collapse;background:#1f2833}th,td{padding:12px;text-align:center;font-size:18px;border-bottom:1px solid #2c3540}th{background:#151a21;color:#ff4500}.numero-kart{background:#ff4500;color:#fff;padding:4px 10px;border-radius:4px;font-weight:bold}input,select,button{background:#1f2833;border:1px solid #ff4500;color:#fff;padding:8px;border-radius:4px;font-weight:bold}button{cursor:pointer;background:#ff4500}</style></head><body>
 <header><h1><span style="color:#ff4500">ILS</span> TIMING</h1><div id="cronometro" style="font-size:32px;font-family:monospace;color:#ff4500">--:--</div><div id="status-label" style="font-weight:bold;padding:5px 15px;border-radius:4px;background:#2c3540">PISTA FECHADA</div></header>
 <div style="display:flex;gap:20px;justify-content:center;margin-top:20px"><div class="box"><span>CONTROLE DE PISTA:</span>
-<button onclick="fetch('/cmd?acao=iniciar&valor='+prompt('Digite o tempo do Treino (minutos):','5')+'&sessao=TREINO')" style="background:#00ff00;color:#000">ABRIR TREINO</button>
-<button onclick="fetch('/cmd?acao=iniciar&valor='+prompt('Digite o tempo da Classificação (minutos):','5')+'&sessao=CLASSIFICACAO')" style="background:#00ff00;color:#000">ABRIR CLASSIFICAÇÃO</button>
-<button onclick="fetch('/cmd?acao=iniciar&valor='+prompt('Digite o numero de VOLTAS da Corrida:','10')+'&sessao=CORRIDA')" style="background:#ff4500;color:#fff">LARGAR CORRIDA</button>
+<button onclick="fetch('/cmd?acao=iniciar&valor='+prompt('Tempo do Treino (minutos):','5')+'&sessao=TREINO')" style="background:#00ff00;color:#000">TREINO</button>
+<button onclick="fetch('/cmd?acao=iniciar&valor='+prompt('Tempo da Classificacao (minutos):','5')+'&sessao=CLASSIFICACAO')" style="background:#00ff00;color:#000">CLASSIFICAÇÃO</button>
+<button onclick="fetch('/cmd?acao=iniciar&valor='+prompt('Numero de VOLTAS da Corrida:','10')+'&sessao=CORRIDA')" style="background:#ff4500;color:#fff">CORRIDA</button>
 <button onclick="if(confirm('Dar bandeirada manual?'))fetch('/cmd?acao=finalizar')" style="background:#ffff00;color:#000">BAND. MANUAl</button>
 <button onclick="if(confirm('Resetar pista?'))fetch('/cmd?acao=resetar')" style="background:#ff0000;color:#fff">RESET</button></div>
-<div class="box" style="border-color:#66fcf1"><span>CADASTRO BLINDADO:</span><input type="number" id="c-id" placeholder="ID" style="width:50px"><input type="text" id="c-nome" placeholder="Piloto" style="width:100px"><input type="text" id="c-num" placeholder="Kart" style="width:50px"><button onclick="fetch('/cad?id='+document.getElementById('c-id').value+'&nome='+document.getElementById('c-nome').value+'&numero='+document.getElementById('c-num').value);alert('Piloto salvo no banco de dados!');" style="background:#66fcf1;color:#000">SALVAR</button></div></div>
+<div class="box" style="border-color:#66fcf1"><span>CADASTRO:</span><input type="number" id="c-id" placeholder="ID" style="width:50px"><input type="text" id="c-nome" placeholder="Piloto" style="width:100px"><input type="text" id="c-num" placeholder="Kart" style="width:50px"><button onclick="fetch('/cad?id='+document.getElementById('c-id').value+'&nome='+document.getElementById('c-nome').value+'&numero='+document.getElementById('c-num').value);alert('Salvo!');" style="background:#66fcf1;color:#000">SALVAR</button></div></div>
 <table><thead><tr><th>P.</th><th>Nº</th><th style="text-align:left">Piloto</th><th>Última Volta</th><th>Melhor Volta</th><th>Voltas</th></tr></thead><tbody id="tabela-tempos"><tr><td colspan="6" style="color:#888">Aguardando início...</td></tr></tbody></table>
 <script>
 setInterval(function(){fetch('/dados').then(r=>r.json()).then(d=>{
@@ -59,14 +57,16 @@ def tratar_passagem_logica(id_kart, tempo_recebido):
 	if id_kart not in historico_passagens: historico_passagens[id_kart] = []
 	historico_passagens[id_kart].append(tempo_recebido)
 	total_voltas = len(historico_passagens[id_kart]) - 1
-	# Regra do Tempo Zerado + 1 Volta para fechar o Grid automaticamente
 	if status_prova == "CLASSIFICACAO" and classificacao_zerada:
 		if id_kart not in karts_que_ja_fecharam_volta: karts_que_ja_fecharam_volta.append(id_kart)
 		if len(karts_que_ja_fecharam_volta) >= len(historico_passagens):
 			grid_final_salvo = obter_ranking()
 			status_prova, relogio_inicial_texto = "GRID_DEFINIDO", "GRID"
 			executar_salvamento_automatico()
-	# Regra de fim de corrida por número de voltas
+	if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado:
+		status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"
+		executar_salvamento_automatico()
+	enviar_dados_painel()
 def obter_ranking(dados_origem=None):
 	global tipo_sessao, parametro_prova, relogio_inicial_texto, status_prova, grid_final_salvo, historico_passagens, TABELA_PILOTOS
 	if status_prova == "GRID_DEFINIDO" and dados_origem is None: return grid_final_salvo
@@ -78,14 +78,14 @@ def obter_ranking(dados_origem=None):
 			info = TABELA_PILOTOS.get(int(id_kart), {"nome": f"Kart {id_kart}", "numero": "??"})
 			ranking.append({"id": int(id_kart), "piloto": info["nome"], "numero": info["numero"], "ultima": formatar_tempo(voltas_milis[-1]), "melhor": formatar_tempo(min(voltas_milis)), "melhor_bruto": min(voltas_milis), "voltas": len(voltas_milis), "ultimo_timestamp": fonte[id_kart][-1]})
 	ranking_ordenado = sorted(ranking, key=lambda x: x["melhor_bruto"]) if tipo_sessao in ["TREINO", "CLASSIFICACAO"] else sorted(ranking, key=lambda x: (-x["voltas"], x["ultimo_timestamp"]))
-	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA" and dados_origem is None: relogio_inicial_texto = f"V. {ranking_ordenado[0]['voltas']}/{parametro_prova}"
+	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA" and dados_origem is None: relogio_inicial_texto = f"V. {ranking_ordenado['voltas']}/{parametro_prova}"
 	return ranking_ordenado
 
 def enviar_dados_painel():
 	global status_prova, tipo_sessao, relogio_inicial_texto
 	socketio.emit('atualizar_painel', {"status": status_prova, "tipo": tipo_sessao, "relogio": relogio_inicial_texto, "ranking": obter_ranking()})
 
-def executar_salvamento_automatico():
+def ejecutar_salvamento_automatico():
 	global tipo_sessao, historico_passagens, TABELA_PILOTOS
 	copia_segura = json.loads(json.dumps(historico_passagens))
 	ranking_congelado = obter_ranking(dados_origem=copia_segura)
