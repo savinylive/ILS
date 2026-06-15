@@ -67,11 +67,7 @@ def tratar_passagem_logica(id_kart, tempo_recebido):
 			status_prova, relogio_inicial_texto = "GRID_DEFINIDO", "GRID"
 			executar_salvamento_automatico()
 	# Regra de fim de corrida por número de voltas
-	if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado:
-		status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"
-		executar_salvamento_automatico()
-	enviar_dados_painel()
-def obter_ranking(dados_origem=None):
+	def obter_ranking(dados_origem=None):
 	global tipo_sessao, parametro_prova, relogio_inicial_texto, status_prova, grid_final_salvo, historico_passagens, TABELA_PILOTOS
 	if status_prova == "GRID_DEFINIDO" and dados_origem is None: return grid_final_salvo
 	fonte = historico_passagens if dados_origem is None else dados_origem
@@ -82,7 +78,7 @@ def obter_ranking(dados_origem=None):
 			info = TABELA_PILOTOS.get(int(id_kart), {"nome": f"Kart {id_kart}", "numero": "??"})
 			ranking.append({"id": int(id_kart), "piloto": info["nome"], "numero": info["numero"], "ultima": formatar_tempo(voltas_milis[-1]), "melhor": formatar_tempo(min(voltas_milis)), "melhor_bruto": min(voltas_milis), "voltas": len(voltas_milis), "ultimo_timestamp": fonte[id_kart][-1]})
 	ranking_ordenado = sorted(ranking, key=lambda x: x["melhor_bruto"]) if tipo_sessao in ["TREINO", "CLASSIFICACAO"] else sorted(ranking, key=lambda x: (-x["voltas"], x["ultimo_timestamp"]))
-	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA" and dados_origem is None: relogio_inicial_texto = f"V. {ranking_ordenado[0]['voltas']}/{parametro_prova}"
+	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA" and dados_origem is None: relogio_inicial_texto = f"V. {ranking_ordenado['voltas']}/{parametro_prova}"
 	return ranking_ordenado
 
 def enviar_dados_painel():
