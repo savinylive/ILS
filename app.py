@@ -44,17 +44,18 @@ def processar_dados_serial():
 				historico_passagens[id_kart].append(tempo_atual_boxes)
 				if status_prova == "CORRIDA" and (len(historico_passagens[id_kart]) - 1) >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"
 	except: pass
-def obter_ranking():
-	global tipo_sessao, parametro_prova, relogio_inicial_texto, status_prova, grid_final_salvo
-	if status_prova == "GRID_DEFINIDO": return grid_final_salvo
+def obter_ranking(dados_origem=None):
+	global tipo_sessao, parametro_prova, relogio_inicial_texto, status_prova, grid_final_salvo, historico_passagens, TABELA_PILOTOS
+	if status_prova == "GRID_DEFINIDO" and dados_origem is None: return grid_final_salvo
+	fonte = historico_passagens if dados_origem is None else dados_origem
 	ranking = []
-	for id_kart in historico_passagens:
-		if len(historico_passagens[id_kart]) >= 2:
-			voltas_milis = [historico_passagens[id_kart][i] - historico_passagens[id_kart][i-1] for i in range(1, len(historico_passagens[id_kart]))]
-			info = TABELA_PILOTOS.get(id_kart, {"nome": f"Kart {id_kart}", "numero": "??"})
-			ranking.append({"id": id_kart, "piloto": info["nome"], "numero": info["numero"], "ultima": formatar_tempo(voltas_milis[-1]), "melhor": formatar_tempo(min(voltas_milis)), "melhor_bruto": min(voltas_milis), "voltas": len(voltas_milis), "ultimo_timestamp": historico_passagens[id_kart][-1]})
+	for id_kart in fonte:
+		if len(fonte[id_kart]) >= 2:
+			voltas_milis = [int(fonte[id_kart][i]) - int(fonte[id_kart][i-1]) for i in range(1, len(fonte[id_kart]))]
+			info = TABELA_PILOTOS.get(int(id_kart), {"nome": f"Kart {id_kart}", "numero": "??"})
+			ranking.append({"id": int(id_kart), "piloto": info["nome"], "numero": info["numero"], "ultima": formatar_tempo(voltas_milis[-1]), "melhor": formatar_tempo(min(voltas_milis)), "melhor_bruto": min(voltas_milis), "voltas": len(voltas_milis), "ultimo_timestamp": fonte[id_kart][-1]})
 	ranking_ordenado = sorted(ranking, key=lambda x: x["melhor_bruto"]) if tipo_sessao in ["TREINO", "CLASSIFICACAO"] else sorted(ranking, key=lambda x: (-x["voltas"], x["ultimo_timestamp"]))
-	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA": relogio_inicial_texto = f"V. {ranking_ordenado['voltas']}/{parametro_prova}"
+	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA" and dados_origem is None: relogio_inicial_texto = f"V. {ranking_ordenado[0]['voltas']}/{parametro_prova}"
 	return ranking_ordenado
 @app.route('/')
 def index():
@@ -74,17 +75,19 @@ def cmd():
 		if tipo_sessao == "CORRIDA": relogio_inicial_texto = f"V. 0/{parametro_prova}"
 		status_prova = tipo_sessao
 	if acao == 'finalizar' and status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:
-		if tipo_sessao == "CLASSIFICACAO": grid_final_salvo = obter_ranking(); status_prova, relogio_inicial_texto = "GRID_DEFINIDO", "GRID"
+		copia_segura = json.loads(json.dumps(historico_passagens))
+		ranking_congelado = obter_ranking(dados_origem=copia_segura)
+		if tipo_sessao == "CLASSIFICACAO": grid_final_salvo = ranking_congelado; status_prova, relogio_inicial_texto = "GRID_DEFINIDO", "GRID"
 		else: status_prova, relogio_inicial_texto = "FINALIZADO", "FIM"
 		agora = datetime.now()
 		nome_pasta = f"SESSAO_{tipo_sessao}_{agora.strftime('%d_%m_%Y_%Hh%Mmin')}"
 		if not os.path.exists(nome_pasta): os.makedirs(nome_pasta)
-		linhas_texto = [f"{i+1}o - Kart #{k['numero']} - {k['piloto']} - Melh: {k['melhor']}" for i, k in enumerate(obter_ranking())]
+		linhas_texto = [f"{i+1}o - Kart #{k['numero']} - {k['piloto']} - Melh: {k['melhor']}" for i, k in enumerate(ranking_congelado)]
 		with open(os.path.join(nome_pasta, "00_POSICOES.txt"), "w", encoding="utf-8") as f: f.write("ILS TIMING - RESULTADOS\n\n" + "\n".join(linhas_texto))
-		for id_kart in historico_passagens:
-			if len(historico_passagens[id_kart]) >= 2:
-				info = TABELA_PILOTOS.get(id_kart, {"nome": f"Kart_{id_kart}", "numero": str(id_kart)})
-				v_milis = [historico_passagens[id_kart][i] - historico_passagens[id_kart][i-1] for i in range(1, len(historico_passagens[id_kart]))]
+		for id_kart in copia_segura:
+			if len(copia_segura[id_kart]) >= 2:
+				info = TABELA_PILOTOS.get(int(id_kart), {"nome": f"Kart_{id_kart}", "numero": str(id_kart)})
+				v_milis = [int(copia_segura[id_kart][i]) - int(copia_segura[id_kart][i-1]) for i in range(1, len(copia_segura[id_kart]))]
 				c_v = "\n".join([f"Volta {i+1}: {formatar_tempo(t)}" for i, t in enumerate(v_milis)])
 				with open(os.path.join(nome_pasta, f"VOLTAS_{info['numero']}_{info['nome'].replace(' ', '_')}.txt"), "w", encoding="utf-8") as f: f.write(f"PILOTO: {info['nome']}\n\n" + c_v)
 	if acao == 'resetar': historico_passagens.clear(); status_prova, relogio_inicial_texto = "AGUARDANDO", "--:--"
@@ -99,7 +102,4 @@ def falso():
 	global historico_passagens, status_prova, vencedor_detectado, parametro_prova, relogio_inicial_texto
 	id_kart = int(request.args.get('id', 1))
 	tempo_recebido = int(request.args.get('tempo', int(time.time() * 1000)))
-	if status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:
-		if id_kart not in historico_passagens: historico_passagens[id_kart] = []
-		historico_passagens[id_kart].append(tempo_recebido)
-total_voltas = len(historico_passagens[id_kart]) - 1if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"return "ok"if name == 'main':threading.Thread(target=processar_dados_serial, daemon=True).start()threading.Thread(target=atualizar_relogio_loop, daemon=True).start()app.run(host='0.0.0.0', port=5000, debug=False)
+if status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:if id_kart not in historico_passagens: historico_passagens[id_kart] = []historico_passagens[id_kart].append(tempo_recebido)total_voltas = len(historico_passagens[id_kart]) - 1if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"return "ok"if name == 'main':threading.Thread(target=processar_dados_serial, daemon=True).start()threading.Thread(target=atualizar_relogio_loop, daemon=True).start()app.run(host='0.0.0.0', port=5000, debug=False)
