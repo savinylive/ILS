@@ -54,7 +54,7 @@ def obter_ranking():
 			info = TABELA_PILOTOS.get(id_kart, {"nome": f"Kart {id_kart}", "numero": "??"})
 			ranking.append({"id": id_kart, "piloto": info["nome"], "numero": info["numero"], "ultima": formatar_tempo(voltas_milis[-1]), "melhor": formatar_tempo(min(voltas_milis)), "melhor_bruto": min(voltas_milis), "voltas": len(voltas_milis), "ultimo_timestamp": historico_passagens[id_kart][-1]})
 	ranking_ordenado = sorted(ranking, key=lambda x: x["melhor_bruto"]) if tipo_sessao in ["TREINO", "CLASSIFICACAO"] else sorted(ranking, key=lambda x: (-x["voltas"], x["ultimo_timestamp"]))
-	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA": relogio_inicial_texto = f"V. {ranking_ordenado[0]['voltas']}/{parametro_prova}"
+	if tipo_sessao == "CORRIDA" and ranking_ordenado and status_prova == "CORRIDA": relogio_inicial_texto = f"V. {ranking_ordenado['voltas']}/{parametro_prova}"
 	return ranking_ordenado
 @app.route('/')
 def index():
@@ -74,15 +74,19 @@ def cmd():
 		if tipo_sessao == "CORRIDA": relogio_inicial_texto = f"V. 0/{parametro_prova}"
 		status_prova = tipo_sessao
 	if acao == 'finalizar' and status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:
-		if tipo_sessao == "CLASSIFICACAO":
-			grid_final_salvo = obter_ranking()
-			status_prova, relogio_inicial_texto = "GRID_DEFINIDO", "GRID"
+		if tipo_sessao == "CLASSIFICACAO": grid_final_salvo = obter_ranking(); status_prova, relogio_inicial_texto = "GRID_DEFINIDO", "GRID"
 		else: status_prova, relogio_inicial_texto = "FINALIZADO", "FIM"
 		agora = datetime.now()
 		nome_pasta = f"SESSAO_{tipo_sessao}_{agora.strftime('%d_%m_%Y_%Hh%Mmin')}"
 		if not os.path.exists(nome_pasta): os.makedirs(nome_pasta)
-		with open(os.path.join(nome_pasta, "00_POSICOES.txt"), "w") as f:
-			for idx, k in enumerate(obter_ranking()): f.write(f"{idx+1}o - Kart #{k['numero']} - {k['piloto']} - Melh: {k['melhor']}\n")
+		linhas_texto = [f"{i+1}o - Kart #{k['numero']} - {k['piloto']} - Melh: {k['melhor']}" for i, k in enumerate(obter_ranking())]
+		with open(os.path.join(nome_pasta, "00_POSICOES.txt"), "w", encoding="utf-8") as f: f.write("ILS TIMING - RESULTADOS\n\n" + "\n".join(linhas_texto))
+		for id_kart in historico_passagens:
+			if len(historico_passagens[id_kart]) >= 2:
+				info = TABELA_PILOTOS.get(id_kart, {"nome": f"Kart_{id_kart}", "numero": str(id_kart)})
+				v_milis = [historico_passagens[id_kart][i] - historico_passagens[id_kart][i-1] for i in range(1, len(historico_passagens[id_kart]))]
+				c_v = "\n".join([f"Volta {i+1}: {formatar_tempo(t)}" for i, t in enumerate(v_milis)])
+				with open(os.path.join(nome_pasta, f"VOLTAS_{info['numero']}_{info['nome'].replace(' ', '_')}.txt"), "w", encoding="utf-8") as f: f.write(f"PILOTO: {info['nome']}\n\n" + c_v)
 	if acao == 'resetar': historico_passagens.clear(); status_prova, relogio_inicial_texto = "AGUARDANDO", "--:--"
 	return "ok"
 @app.route('/cad')
@@ -98,10 +102,4 @@ def falso():
 	if status_prova in ["TREINO", "CLASSIFICACAO", "CORRIDA", "BANDEIRADA"]:
 		if id_kart not in historico_passagens: historico_passagens[id_kart] = []
 		historico_passagens[id_kart].append(tempo_recebido)
-		total_voltas = len(historico_passagens[id_kart]) - 1
-		if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"
-	return "ok"
-if __name__ == '__main__':
-	threading.Thread(target=processar_dados_serial, daemon=True).start()
-	threading.Thread(target=atualizar_relogio_loop, daemon=True).start()
-	app.run(host='0.0.0.0', port=5000, debug=False)
+total_voltas = len(historico_passagens[id_kart]) - 1if status_prova == "CORRIDA" and total_voltas >= parametro_prova and not vencedor_detectado: status_prova, vencedor_detectado, relogio_inicial_texto = "BANDEIRADA", True, "FIM"return "ok"if name == 'main':threading.Thread(target=processar_dados_serial, daemon=True).start()threading.Thread(target=atualizar_relogio_loop, daemon=True).start()app.run(host='0.0.0.0', port=5000, debug=False)
